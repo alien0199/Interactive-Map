@@ -1,0 +1,639 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Taipei Trip 2026: Mobile Optimized</title>
+<!-- Leaflet CSS -->
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+<!-- Font Awesome & Sarabun Font -->
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+<link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;600;800&display=swap" rel="stylesheet">
+
+<style>
+    body { margin: 0; padding: 0; font-family: 'Sarabun', sans-serif; display: flex; flex-direction: column; height: 100vh; overflow: hidden; background-color: #f8fafc; }
+    
+    /* --- Map Container (Full Screen) --- */
+    #map { 
+        position: absolute; 
+        top: 0; 
+        left: 0; 
+        width: 100%; 
+        height: 100%; 
+        z-index: 1; 
+    }
+
+    /* --- Compact Top Control Panel (Floating) --- */
+    #controls {
+        position: absolute;
+        top: 10px;
+        left: 10px;
+        right: 10px;
+        background: rgba(255, 255, 255, 0.95);
+        padding: 10px;
+        border-radius: 16px;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.15);
+        z-index: 1000;
+        backdrop-filter: blur(8px);
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        max-width: 500px;
+        margin: 0 auto;
+    }
+    
+    .header-row { display: flex; justify-content: space-between; align-items: center; }
+    h1 { margin: 0; font-size: 1rem; color: #1e293b; font-weight: 800; display: flex; align-items: center; gap: 5px; }
+    
+    .day-selector {
+        display: flex;
+        gap: 6px;
+        overflow-x: auto;
+        padding: 2px 0 5px 0;
+        -webkit-overflow-scrolling: touch;
+        scrollbar-width: none; /* Hide scrollbar Firefox */
+    }
+    .day-selector::-webkit-scrollbar { display: none; } /* Hide scrollbar Chrome/Safari */
+
+    .day-btn {
+        border: 1px solid #e2e8f0;
+        padding: 6px 12px;
+        border-radius: 15px;
+        cursor: pointer;
+        font-family: 'Sarabun', sans-serif;
+        font-weight: 700;
+        white-space: nowrap;
+        transition: all 0.2s;
+        background: #fff;
+        color: #64748b;
+        font-size: 0.8rem;
+        flex-shrink: 0;
+    }
+    .day-btn.active {
+        background: #2563eb;
+        color: white;
+        border-color: #2563eb;
+        box-shadow: 0 2px 5px rgba(37, 99, 235, 0.3);
+    }
+
+    /* --- Floating Play Button (Bottom Right) --- */
+    .fab-play-container {
+        position: absolute;
+        bottom: 30px; /* Above attribution */
+        right: 20px;
+        z-index: 1000;
+        display: flex;
+        flex-direction: column;
+        align-items: flex-end;
+        gap: 10px;
+    }
+    
+    .play-btn {
+        background: #10b981;
+        color: white;
+        border: none;
+        width: 56px;
+        height: 56px;
+        border-radius: 50%;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.5rem;
+        box-shadow: 0 4px 15px rgba(16, 185, 129, 0.4);
+        transition: transform 0.2s, background-color 0.2s;
+    }
+    .play-btn:active { transform: scale(0.9); }
+    .play-btn.playing { background: #ef4444; box-shadow: 0 4px 15px rgba(239, 68, 68, 0.4); }
+    
+    .status-badge {
+        background: rgba(15, 23, 42, 0.8);
+        color: white;
+        padding: 6px 12px;
+        border-radius: 20px;
+        font-size: 0.8rem;
+        font-weight: 600;
+        backdrop-filter: blur(4px);
+        margin-bottom: 5px;
+        display: none; /* Show only when playing */
+        white-space: nowrap;
+    }
+
+    /* --- Leaflet Control Override --- */
+    .leaflet-control-layers {
+        border: none !important;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.1) !important;
+        border-radius: 12px !important;
+        font-family: 'Sarabun', sans-serif !important;
+        font-size: 0.8rem !important;
+        padding: 5px !important;
+        margin-top: 10px !important;
+        margin-right: 10px !important;
+    }
+    .leaflet-top { top: 80px; } /* Push controls down below our custom header */
+
+    /* --- Custom Icons --- */
+    .custom-icon {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 50%;
+        border: 2px solid white;
+        box-shadow: 0 2px 5px rgba(0,0,0,0.3);
+        font-size: 0.85rem;
+        color: white;
+        transition: transform 0.2s;
+    }
+
+    /* Moving Marker */
+    .moving-marker {
+        background: #ef4444;
+        color: white;
+        border: 2px solid white;
+        width: 30px;
+        height: 30px;
+        border-radius: 50%;
+        box-shadow: 0 0 15px rgba(239, 68, 68, 0.6);
+        z-index: 2000 !important;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    /* Info Box Overlay (Bottom) */
+    .info-overlay {
+        position: absolute;
+        bottom: 20px;
+        left: 10px;
+        right: 10px;
+        background: rgba(255, 255, 255, 0.98);
+        padding: 15px;
+        border-radius: 16px;
+        box-shadow: 0 -4px 20px rgba(0,0,0,0.1);
+        z-index: 999;
+        display: none;
+        backdrop-filter: blur(8px);
+        border: 1px solid rgba(226, 232, 240, 0.8);
+        animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+        max-width: 500px;
+        margin: 0 auto;
+    }
+    @keyframes slideUp {
+        from { transform: translateY(20px); opacity: 0; }
+        to { transform: translateY(0); opacity: 1; }
+    }
+    
+    .info-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+    .step-badge {
+        background: #0f172a;
+        color: white;
+        font-size: 0.7rem;
+        padding: 3px 8px;
+        border-radius: 6px;
+        font-weight: 700;
+        text-transform: uppercase;
+    }
+    .dist-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        background: #f1f5f9;
+        color: #475569;
+        font-size: 0.75rem;
+        padding: 3px 8px;
+        border-radius: 6px;
+        font-weight: 600;
+        border: 1px solid #cbd5e1;
+    }
+    .info-title { font-weight: 800; font-size: 1.1rem; color: #0f172a; margin: 0 0 4px 0; line-height: 1.3; }
+    .info-desc { font-size: 0.9rem; color: #64748b; line-height: 1.4; margin: 0 0 12px 0; }
+    
+    /* Action Buttons */
+    .action-row { display: flex; gap: 8px; }
+    .btn-action {
+        flex: 1;
+        padding: 10px;
+        border-radius: 10px;
+        border: none;
+        font-family: 'Sarabun', sans-serif;
+        font-weight: 700;
+        font-size: 0.9rem;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+        text-decoration: none;
+        transition: transform 0.1s;
+    }
+    .btn-action:active { transform: scale(0.96); }
+    .btn-maps { background-color: #3b82f6; color: white; box-shadow: 0 4px 6px rgba(59, 130, 246, 0.2); }
+    .btn-street { background-color: #f97316; color: white; box-shadow: 0 4px 6px rgba(249, 115, 22, 0.2); }
+    .btn-close {
+        position: absolute;
+        top: 10px;
+        right: 10px;
+        background: #f1f5f9;
+        border: none;
+        border-radius: 50%;
+        width: 24px;
+        height: 24px;
+        color: #94a3b8;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    /* Tablet/Desktop tweaks */
+    @media (min-width: 768px) {
+        .info-overlay { left: 20px; right: auto; bottom: 30px; width: 340px; }
+        #controls { width: 350px; left: 20px; right: auto; top: 20px; }
+        .fab-play-container { right: 30px; bottom: 40px; }
+    }
+</style>
+</head>
+<body>
+
+<div id="map"></div>
+
+<!-- Floating Top Controls -->
+<div id="controls">
+    <div class="header-row">
+        <h1>🇹🇼 แผนที่เที่ยวไทเป</h1>
+        <a href="index.html" style="font-size: 0.8rem; color: #64748b; font-weight: 600; text-decoration: none; display: flex; align-items: center; gap: 4px; background: #f1f5f9; padding: 4px 8px; border-radius: 8px;">
+            <i class="fas fa-arrow-left"></i> <span style="display:inline-block;">กลับ</span>
+        </a>
+    </div>
+    <div class="day-selector">
+        <button class="day-btn active" onclick="loadDay(1)">Day 1</button>
+        <button class="day-btn" onclick="loadDay(2)">Day 2</button>
+        <button class="day-btn" onclick="loadDay(3)">Day 3</button>
+        <button class="day-btn" onclick="loadDay(4)">Day 4</button>
+    </div>
+</div>
+
+<!-- Floating Action Button (Play) -->
+<div class="fab-play-container">
+    <div id="status-badge" class="status-badge">▶ กำลังเดินทาง...</div>
+    <button id="playBtn" class="play-btn" onclick="toggleSimulation()">
+        <i class="fas fa-play" style="margin-left: 4px;"></i>
+    </button>
+</div>
+
+<!-- Bottom Sheet Info Box -->
+<div id="info-box" class="info-overlay">
+    <button class="btn-close" onclick="closeInfoBox()"><i class="fas fa-times"></i></button>
+    <div class="info-header">
+        <div class="step-badge" id="info-step">STOP 1</div>
+        <div class="dist-badge" id="info-dist">Start</div>
+    </div>
+    <h3 class="info-title" id="info-title">Location Name</h3>
+    <p class="info-desc" id="info-desc">Description details...</p>
+    
+    <div class="action-row">
+        <a id="btn-maps" href="#" target="_blank" class="btn-action btn-maps">
+            <i class="fas fa-map-marked-alt"></i> นำทาง
+        </a>
+        <a id="btn-street" href="#" target="_blank" class="btn-action btn-street">
+            <i class="fas fa-street-view"></i> 360°
+        </a>
+    </div>
+</div>
+
+<!-- Leaflet JS -->
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+
+<script>
+    // --- 1. Map Layers Definition ---
+    const cleanMap = L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+        attribution: '&copy; CARTO',
+        subdomains: 'abcd',
+        maxZoom: 20
+    });
+
+    const thaiMap = L.tileLayer('https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}&hl=th', {
+        attribution: '&copy; Google',
+        subdomains: ['mt0', 'mt1', 'mt2', 'mt3'],
+        maxZoom: 20
+    });
+
+    // --- 2. Initialize Map ---
+    const map = L.map('map', {
+        zoomControl: false,
+        layers: [cleanMap]
+    }).setView([25.0478, 121.5171], 14);
+    
+    // Move Zoom Control to not overlap with top bar
+    L.control.zoom({ position: 'topright' }).addTo(map);
+
+    // Layer Control
+    const baseMaps = {
+        "แผนที่คลีน (Clean)": cleanMap,
+        "แผนที่ไทย (Google)": thaiMap
+    };
+    L.control.layers(baseMaps, null, { position: 'topright' }).addTo(map);
+
+    // --- 3. Verified Data Structure ---
+    const locations = {
+        day1: {
+            color: '#2563eb', // Blue
+            points: [
+                { coords: [25.0797, 121.2342], type: "airport", title: "สนามบินเถาหยวน", desc: "15:25 น. ถึงไต้หวัน ผ่าน ตม. รับกระเป๋า" },
+                { coords: [25.0615, 121.3500], type: "transit", title: "Airport MRT", desc: "นั่งรถไฟ Express เข้าเมือง (35 นาที)" },
+                { coords: [25.0485, 121.5172], type: "transit", title: "Taipei Main Station", desc: "ถึงสถานีหลัก เดินไปโรงแรม (Exit Z)" },
+                { coords: [25.046369, 121.516886], type: "hotel", title: "Mayer Inn", desc: "Check-in เก็บกระเป๋า" },
+                { coords: [25.0425, 121.5065], type: "cafe", title: "Fong Da Coffee", desc: "ร้านกาแฟวินเทจ 60 ปี" },
+                { coords: [25.0435, 121.5075], type: "food", title: "บะหมี่อาจง", desc: "บะหมี่แป้งข้าวเจ้าในตำนาน (Must Try!)" },
+                { coords: [25.0445, 121.5060], type: "food", title: "Tian Tian Li", desc: "ข้าวหน้าหมูพะโล้ไข่ดาว" },
+                { coords: [25.0438, 121.5068], type: "drink", title: "Xing Fu Tang", desc: "ชานมไข่มุกพ่นไฟ" },
+                { coords: [25.0440, 121.5050], type: "food", title: "Hot-Star ไก่ทอด", desc: "ไก่ทอดชิ้นยักษ์" },
+                { coords: [25.0428, 121.5062], type: "food", title: "Three Brothers Tofu Pudding", desc: "โทฟุพุดดิ้งเจ้าดัง" },
+                { coords: [25.0448, 121.5045], type: "shopping", title: "Don Don Donki", desc: "ห้างดองกี้ 24 ชม." },
+                { coords: [25.0432, 121.5055], type: "photo", title: "ทางม้าลายสายรุ้ง", desc: "จุดถ่ายรูปหน้า MRT Ximen ทางออก 6" },
+                { coords: [25.046369, 121.516886], type: "hotel", title: "กลับที่พัก", desc: "พักผ่อน" }
+            ]
+        },
+        day2: {
+            color: '#d97706', // Orange
+            points: [
+                { coords: [25.046369, 121.516886], type: "hotel", title: "เริ่ม: Mayer Inn", desc: "08:00 ออกเดินทาง" },
+                { coords: [25.0370, 121.4999], type: "temple", title: "วัดหลงซาน", desc: "ไหว้พระขอพรเช้า" },
+                { coords: [25.0366, 121.5025], type: "photo", title: "ย่าน Bopiliao", desc: "ชมตึกอิฐแดงโบราณ" },
+                { coords: [25.0355, 121.4988], type: "food", title: "Yuanfang Gua Bao", desc: "เบอร์เกอร์หมู Michelin" },
+                { coords: [25.0375, 121.5030], type: "food", title: "โจ๊กหมูกรอบ Zhouji", desc: "ข้าวต้มหมูกรอบมื้อสาย" },
+                { coords: [25.0487, 121.5115], type: "photo", title: "ประตูเมืองเหนือ", desc: "Beimen North Gate" },
+                { coords: [25.0630, 121.5338], type: "temple", title: "วัดสิงเทียน", desc: "เทพเจ้ากวนอู" },
+                { coords: [25.0442, 121.5294], type: "art", title: "Huashan 1914", desc: "Creative Park" },
+                { coords: [25.0438, 121.5315], type: "cafe", title: "Simple Kaffa", desc: "กาแฟแชมป์โลก" },
+                { coords: [25.0315, 121.5620], type: "photo", title: "Si Si Nan Cun", desc: "หมู่บ้านทหาร (จุดถ่ายรูป 101)" },
+                { coords: [25.0339, 121.5645], type: "shopping", title: "Taipei 101", desc: "เดินห้างหรู ย่านตึกสูง" },
+                { coords: [25.0355, 121.5660], type: "drink", title: "Chun Shui Tang", desc: "ชานมไข่มุกต้นตำรับ" },
+                { coords: [25.0558, 121.5155], type: "food", title: "ตลาดหนิงเซี่ย", desc: "Night Market" },
+                { coords: [25.046369, 121.516886], type: "hotel", title: "กลับที่พัก", desc: "จบทริปวันที่ 2" }
+            ]
+        },
+        day3: {
+            color: '#059669', // Green
+            points: [
+                { coords: [25.046369, 121.516886], type: "hotel", title: "เริ่ม: Mayer Inn", desc: "เช้า: เดินไปสถานีรถไฟ" },
+                { coords: [25.0478, 121.5171], type: "transit", title: "Taipei Main Station", desc: "ขึ้นรถไฟ TRA ไป Keelung" },
+                { coords: [25.1320, 121.7400], type: "city", title: "สถานี Keelung", desc: "ถึงเมืองท่าจีหลง" },
+                { coords: [25.1285, 121.7425], type: "photo", title: "Maritime Plaza", desc: "วิวท่าเรือ" },
+                { coords: [25.1600, 121.7630], type: "sea", title: "เกาะเหอผิง", desc: "ชมหินรูปร่างแปลกตา" },
+                { coords: [25.1280, 121.7435], type: "food", title: "ตลาด Ren'ai", desc: "มื้อเที่ยง ซูชิ/เทมปุระ" },
+                { coords: [25.1150, 121.8430], type: "transit", title: "ไปจิ่วเฟิ่น", desc: "นั่งรถเมล์ 788/965" },
+                { coords: [25.1095, 121.8450], type: "tea", title: "จิ่วเฟิ่น", desc: "Jiufen Old Street" },
+                { coords: [25.1085, 121.8440], type: "photo", title: "A-Mei Tea House", desc: "โรงน้ำชาโคมแดง" },
+                { coords: [25.1098, 121.8455], type: "food", title: "บัวลอย A-Gan Yi", desc: "กินบัวลอยเผือกวิวทะเล" },
+                { coords: [25.0485, 121.5172], type: "transit", title: "กลับไทเป", desc: "รถบัส 965" },
+                { coords: [25.046369, 121.516886], type: "hotel", title: "ที่พัก", desc: "พักผ่อน" }
+            ]
+        },
+        day4: {
+            color: '#475569', // Gray
+            points: [
+                { coords: [25.046369, 121.516886], type: "hotel", title: "Check-out", desc: "ฝากกระเป๋า" },
+                { coords: [25.0460, 121.5135], type: "food", title: "ก๋วยเตี๋ยวเนื้อ Liu Shan Dong", desc: "มื้อเช้า (มิชลิน)" },
+                { coords: [25.0450, 121.5135], type: "cafe", title: "Heritage Bakery", desc: "ร้านกาแฟเก๋ๆ" },
+                { coords: [25.0495, 121.5170], type: "food", title: "Carrispy Donuts", desc: "โดนัทนมสดทอด" },
+                { coords: [25.0478, 121.5171], type: "shopping", title: "ซื้อของฝาก", desc: "Luchinshu, PX Mart" },
+                { coords: [25.046369, 121.516886], type: "hotel", title: "รับกระเป๋า", desc: "ที่โรงแรม" },
+                { coords: [25.0600, 121.3500], type: "transit", title: "ไปสนามบิน", desc: "Airport MRT" },
+                { coords: [25.0797, 121.2342], type: "airport", title: "กลับบ้าน", desc: "13:50 Flight Departure" }
+            ]
+        }
+    };
+
+    // --- 4. Logic & Helpers ---
+    let currentDay = 1;
+    let markersLayer = L.layerGroup().addTo(map);
+    let polylineLayer = L.layerGroup().addTo(map);
+    let simulationMarker = null;
+    let animationFrameId = null;
+    let isPlaying = false;
+
+    function getIconHtml(type, color) {
+        let iconClass = 'fa-map-marker-alt';
+        switch(type) {
+            case 'airport': iconClass = 'fa-plane-departure'; break;
+            case 'transit': iconClass = 'fa-train'; break;
+            case 'hotel': iconClass = 'fa-bed'; break;
+            case 'food': iconClass = 'fa-utensils'; break;
+            case 'cafe': iconClass = 'fa-coffee'; break;
+            case 'drink': iconClass = 'fa-glass-cheers'; break;
+            case 'shopping': iconClass = 'fa-shopping-bag'; break;
+            case 'temple': iconClass = 'fa-gopuram'; break;
+            case 'photo': iconClass = 'fa-camera'; break;
+            case 'art': iconClass = 'fa-palette'; break;
+            case 'sea': iconClass = 'fa-water'; break;
+            case 'tea': iconClass = 'fa-mug-hot'; break;
+            case 'city': iconClass = 'fa-city'; break;
+        }
+        return `<div class="custom-icon" style="background-color: ${color};"><i class="fas ${iconClass}"></i></div>`;
+    }
+
+    function deg2rad(deg) { return deg * (Math.PI/180); }
+    function getDistance(lat1, lon1, lat2, lon2) {
+        const R = 6371; 
+        const dLat = deg2rad(lat2 - lat1);
+        const dLon = deg2rad(lon2 - lon1);
+        const a = 
+            Math.sin(dLat/2) * Math.sin(dLat/2) +
+            Math.cos(deg2rad(lat1)) * Math.cos(deg2rad(lat2)) * Math.sin(dLon/2) * Math.sin(dLon/2); 
+        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a)); 
+        return R * c; 
+    }
+
+    function getTransportAdvice(distKm) {
+        if (distKm === 0) return { text: "จุดเริ่มต้น", icon: '<i class="fas fa-flag"></i>' };
+        
+        if (distKm < 0.8) {
+            const mins = Math.ceil(distKm / 0.08); 
+            return { 
+                text: `เดิน ${Math.round(distKm*1000)}ม. (~${mins} นาที)`,
+                icon: '<i class="fas fa-walking"></i>'
+            };
+        } else {
+            let mode = "รถเมล์/MRT";
+            if (distKm > 20) mode = "รถไฟ";
+            return { 
+                text: `${mode} ${distKm.toFixed(1)} กม.`,
+                icon: '<i class="fas fa-bus"></i>'
+            };
+        }
+    }
+
+    function loadDay(day) {
+        stopSimulation();
+        closeInfoBox();
+        
+        document.querySelectorAll('.day-btn').forEach(btn => btn.classList.remove('active'));
+        document.querySelectorAll('.day-btn')[day-1].classList.add('active');
+        
+        currentDay = day;
+        const data = locations['day' + day];
+        
+        markersLayer.clearLayers();
+        polylineLayer.clearLayers();
+
+        const latlngs = data.points.map(p => p.coords);
+
+        data.points.forEach((point, index) => {
+            let distKm = 0;
+            if (index > 0) {
+                const prev = data.points[index-1];
+                distKm = getDistance(prev.coords[0], prev.coords[1], point.coords[0], point.coords[1]);
+            }
+
+            const iconHtml = getIconHtml(point.type, data.color);
+            const customIcon = L.divIcon({
+                html: iconHtml,
+                className: 'dummy', 
+                iconSize: [28, 28],
+                iconAnchor: [14, 14]
+            });
+
+            const marker = L.marker(point.coords, {icon: customIcon});
+            
+            marker.on('click', () => {
+                showInfoBox(index + 1, point, distKm, data.color);
+                map.panTo(point.coords);
+            });
+            
+            markersLayer.addLayer(marker);
+        });
+
+        const polyline = L.polyline(latlngs, {
+            color: data.color, 
+            weight: 5, 
+            opacity: 0.8, 
+            lineJoin: 'round',
+            dashArray: '1, 6'
+        });
+        polylineLayer.addLayer(polyline);
+
+        map.fitBounds(polyline.getBounds(), { padding: [50, 50] });
+    }
+
+    function showInfoBox(step, point, distKm, color) {
+        const box = document.getElementById('info-box');
+        const badge = document.getElementById('info-step');
+        const distBadge = document.getElementById('info-dist');
+        const advice = getTransportAdvice(distKm);
+        
+        badge.innerText = `จุดที่ ${step}`; 
+        badge.style.backgroundColor = color;
+        distBadge.innerHTML = `${advice.icon} ${advice.text}`;
+        document.getElementById('info-title').innerText = point.title;
+        document.getElementById('info-desc').innerText = point.desc;
+        
+        const lat = point.coords[0];
+        const lng = point.coords[1];
+        
+        document.getElementById('btn-maps').href = `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`;
+        document.getElementById('btn-street').href = `https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${lat},${lng}`;
+        
+        box.style.display = 'block';
+    }
+
+    function closeInfoBox() {
+        document.getElementById('info-box').style.display = 'none';
+    }
+
+    function toggleSimulation() {
+        if (isPlaying) {
+            stopSimulation();
+        } else {
+            startSimulation();
+        }
+    }
+
+    function startSimulation() {
+        stopSimulation();
+        isPlaying = true;
+        document.getElementById('playBtn').innerHTML = '<i class="fas fa-stop" style="margin-left:0;"></i>';
+        document.getElementById('playBtn').classList.add('playing');
+        document.getElementById('status-badge').style.display = 'block';
+        
+        const data = locations['day' + currentDay];
+        const points = data.points.map(p => L.latLng(p.coords));
+        
+        const movingIcon = L.divIcon({
+            html: '<i class="fas fa-location-arrow"></i>',
+            className: 'moving-marker',
+            iconSize: [30, 30],
+            iconAnchor: [15, 15]
+        });
+
+        simulationMarker = L.marker(points[0], {icon: movingIcon, zIndexOffset: 9999}).addTo(map);
+        
+        let currentSegment = 0;
+        let progress = 0;
+        const speed = 0.015; 
+
+        function animate() {
+            if (!isPlaying) return;
+            
+            if (currentSegment >= points.length - 1) {
+                stopSimulation();
+                return;
+            }
+
+            const start = points[currentSegment];
+            const end = points[currentSegment + 1];
+            
+            const lat = start.lat + (end.lat - start.lat) * progress;
+            const lng = start.lng + (end.lng - start.lng) * progress;
+            
+            simulationMarker.setLatLng([lat, lng]);
+            
+            const dy = end.lat - start.lat;
+            const dx = end.lng - start.lng;
+            const angle = Math.atan2(dy, dx) * 180 / Math.PI;
+            const iconElement = simulationMarker.getElement();
+            if(iconElement) {
+                iconElement.style.transform += ` rotate(${angle - 45}deg)`;
+            }
+
+            if (!map.getBounds().contains([lat, lng])) {
+                 map.panTo([lat, lng]);
+            }
+
+            progress += speed;
+
+            if (progress >= 1) {
+                progress = 0;
+                currentSegment++;
+                
+                const pointData = data.points[currentSegment];
+                const prevData = data.points[currentSegment-1];
+                const dist = getDistance(prevData.coords[0], prevData.coords[1], pointData.coords[0], pointData.coords[1]);
+                
+                showInfoBox(currentSegment + 1, pointData, dist, data.color);
+            }
+
+            animationFrameId = requestAnimationFrame(animate);
+        }
+        
+        animate();
+    }
+
+    function stopSimulation() {
+        isPlaying = false;
+        if (animationFrameId) cancelAnimationFrame(animationFrameId);
+        if (simulationMarker) {
+            map.removeLayer(simulationMarker);
+            simulationMarker = null;
+        }
+        document.getElementById('playBtn').innerHTML = '<i class="fas fa-play" style="margin-left:4px;"></i>';
+        document.getElementById('playBtn').classList.remove('playing');
+        document.getElementById('status-badge').style.display = 'none';
+        closeInfoBox();
+    }
+
+    loadDay(1);
+</script>
+
+</body>
+</html>
